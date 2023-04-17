@@ -1,0 +1,384 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+    <title>three.js webgl - geometry - cube</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <style>
+        body {
+            margin: 0px;
+            background-color: #000000;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+    <script src="three.js/build/three.r89.min.js"></script>
+    <script src="js/controls/OrbitControls.js"></script>
+    <script src="js/libs/dat.gui.min.js"></script>
+    <script src="js/controls/threex.keyboardstate.js"></script>
+    <script>
+        "use strict";
+        var shell_geometry = new THREE.SphereGeometry(10, 10, 10);
+        var shell_material = new THREE.MeshPhongMaterial({ color: 0x000000 });
+        var shells = [];
+
+        var controls;
+        var light, light2, light3;
+        var camera, scene, renderer;
+
+        var tank_body, tire_left, tire_right;
+        var tank_top, tank_top_barrel;
+        const tank = [];
+
+        var enermy_texture = new THREE.TextureLoader().load('textures/BB8.jpg');
+        var enermy_geometry = new THREE.SphereGeometry(20, 20, 20);
+        var enermy_material = new THREE.MeshPhongMaterial({ map: enermy_texture });
+        var enermys = [];
+
+        var gravity = -9.8; // 向上為正
+        var barrelHeading = 90;
+        var heading = 90;
+        var lastTime, lastTime2;
+        var begin = false, start = false;
+
+        var spawnSpeed = 0, initDis = 0, Speed = 0, Time_Now = 0 , hitCount = 0;
+
+        const targetPosition = new THREE.Vector3();
+        const targetDirection = new THREE.Vector3();
+
+        var keyboard = new THREEx.KeyboardState();
+
+        var gui, params;
+        var guiMe = function () {
+            this.Time = Time_Now;
+            this.Score = hitCount;
+            this.Heading = heading;
+            this.BarrelHeading = barrelHeading;
+            this.Velocity = 20;
+            this.RotSpeed = 10;
+            this.BarrelRotSpeed = 7;
+            this.FollowMe = false;
+            this.Hard = false;
+        };
+
+        init();
+
+        lastTime = Date.now();
+        lastTime2 = Date.now();
+
+        animate();
+
+        function init() {
+
+            camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 10, 5000);
+            camera.position.y = 500;
+            camera.position.z = 400;
+
+            scene = new THREE.Scene();
+
+            // create a light
+            light = new THREE.DirectionalLight(0xffffff);
+            light.position.set(100, 200, 400);
+            scene.add(light);
+            light2 = new THREE.DirectionalLight(0xffffff);
+            light2.position.set(-400, 200, -400);
+            scene.add(light2);
+            light3 = new THREE.DirectionalLight(0xffffff);
+            light3.position.set(100, -400, -400);
+            scene.add(light3);
+
+            // add a ground plane
+            var texture = new THREE.TextureLoader().load('textures/UV_Grid_Sm.jpg');
+            var geometry = new THREE.PlaneGeometry(1000, 1000);
+            var material = new THREE.MeshPhongMaterial({ map: texture, side: THREE.DoubleSide });
+            var plane = new THREE.Mesh(geometry, material);
+            plane.rotation.x = -90 * Math.PI / 180;
+            plane.position.y = 0.0;
+            scene.add(plane);
+
+            var axisHelper = new THREE.AxesHelper(200);
+            scene.add(axisHelper);
+
+            //add tank body
+            texture = new THREE.TextureLoader().load('textures/crate.gif');
+            geometry = new THREE.BoxGeometry(60, 30, 80);
+            material = new THREE.MeshPhongMaterial({ map: texture });
+            tank_body = new THREE.Mesh(geometry, material);
+            tank_body.position.y = 25.0;
+            scene.add(tank_body);
+            tank.push(tank_body);
+            //add four tire
+            texture = new THREE.TextureLoader().load('textures/tire.jpg');
+            geometry = new THREE.SphereGeometry(15, 15, 15);
+            material = new THREE.MeshPhongMaterial({ map: texture });
+            var tire_right_position = [
+                [-35, -10, 25],
+                [-35, -10, -25]
+            ];
+            tire_right = tire_right_position.map((position) => {
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.position.set(...position);
+                mesh.rotation.z = 90 * Math.PI / 180;
+                mesh.scale.set(1, 0.75, 1);
+                tank_body.add(mesh);
+                tank.push(mesh);
+                return mesh;
+            });
+            var tire_left_position = [
+                [+35, -10, 25],
+                [+35, -10, -25]
+            ];
+            tire_left = tire_left_position.map((position) => {
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.position.set(...position);
+                mesh.rotation.z = 90 * Math.PI / 180;
+                mesh.scale.set(1, 0.75, 1);
+                tank_body.add(mesh);
+                tank.push(mesh);
+                return mesh;
+            });
+            //add tank top
+            geometry = new THREE.SphereGeometry(20, 20, 20);
+            material = new THREE.MeshPhongMaterial({ color: 0x666666 });
+            tank_top = new THREE.Mesh(geometry, material);
+            tank_top.position.y = 15.0;
+            tank_body.add(tank_top);
+            tank.push(tank_top);
+            //add tank barrel
+            geometry = new THREE.BoxGeometry(15, 40, 15);
+            material = new THREE.MeshPhongMaterial({ color: 0x444444 });
+            tank_top_barrel = new THREE.Mesh(geometry, material);
+            tank_top_barrel.position.y = 10;
+            tank_top_barrel.position.z = 40 * .5;
+            tank_top_barrel.rotation.x = 75 * Math.PI / 180;
+            tank_top.add(tank_top_barrel);
+            tank.push(tank_top_barrel);
+            
+            renderer = new THREE.WebGLRenderer();
+
+            // set the background color to gray
+            renderer.setClearColor(0xa0a0a0);
+
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // let's have the mouse affect the view
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+           // controls.enablePan = false;
+
+            window.addEventListener('resize', onWindowResize, false);
+
+            // add some GUI
+            params = new guiMe();
+            gui = new dat.GUI();
+
+            gui.add(params, 'Time').listen();
+
+            gui.add(params, 'Heading').listen();
+            gui.add(params, 'Score').listen();
+            gui.add(params, 'BarrelHeading').listen();
+            gui.add(params, 'Velocity', 0, 30);
+            gui.add(params, 'RotSpeed', 0, 30);
+            gui.add(params, 'BarrelRotSpeed', 0, 30);
+            gui.add(params, 'FollowMe');
+            gui.add(params, 'Hard');
+            gui.open();
+    
+            window.onkeydown = function (event) {
+                switch (event.keyCode) {
+                    case 32:
+                        create_shell(params.BarrelHeading);
+                        break;
+                    case 66:
+                        if (begin == false) {
+                            lastTime2 = Date.now();
+                            begin = true;
+                            start = true;
+                        }
+                        break;
+                }
+            }
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        function update() {
+            if (keyboard.pressed("W")) {
+                tank_body.position.x += Math.cos(heading * Math.PI / 180) * params.Velocity * 0.25;
+                tank_body.position.z += Math.sin(heading * Math.PI / 180) * params.Velocity * 0.25;
+                tire_left.map((mesh) => {
+                    mesh.rotation.x += Math.PI / 18;
+                });
+                tire_right.map((mesh) => {
+                    mesh.rotation.x += Math.PI / 18;
+                });
+            }
+            if (keyboard.pressed("S")) {
+                tank_body.position.x -= Math.cos(heading * Math.PI / 180) * params.Velocity * 0.25;
+                tank_body.position.z -= Math.sin(heading * Math.PI / 180) * params.Velocity * 0.25;
+                tire_left.map((mesh) => {
+                    mesh.rotation.x -= Math.PI / 18;
+                });
+                tire_right.map((mesh) => {
+                    mesh.rotation.x -= Math.PI / 18;
+                });
+            }
+            if (keyboard.pressed("A")) {
+                heading += 360 - params.RotSpeed * 0.25;
+                barrelHeading += 360 - params.RotSpeed * 0.25;
+                tank_body.rotation.y += Math.PI / 180 * params.RotSpeed * 0.25;
+                tire_left.map((mesh) => {
+                    mesh.rotation.x -= Math.PI / 36;
+                });
+                tire_right.map((mesh) => {
+                    mesh.rotation.x += Math.PI / 36;
+                });
+            }
+            if (keyboard.pressed("D")) {
+                heading += params.RotSpeed * 0.25;
+                barrelHeading += params.RotSpeed * 0.25;
+                tank_body.rotation.y -= Math.PI / 180 * params.RotSpeed * 0.25;
+                tire_left.map((mesh) => {
+                    mesh.rotation.x += Math.PI / 36;
+                });
+                tire_right.map((mesh) => {
+                    mesh.rotation.x -= Math.PI / 36;
+                });
+            }
+            if (keyboard.pressed("left")) {
+                barrelHeading += 360 - params.BarrelRotSpeed * 0.25;
+                tank_top.rotation.y += Math.PI / 180 * params.BarrelRotSpeed * 0.25;
+            }
+            if (keyboard.pressed("right")) {
+                barrelHeading += params.BarrelRotSpeed * 0.25;
+                tank_top.rotation.y -= Math.PI / 180 * params.BarrelRotSpeed * 0.25;
+            }
+        }
+
+        function create_shell(faceto) {
+            var shell_mesh = new THREE.Mesh(shell_geometry, shell_material);
+            shell_mesh.position.y = 58;
+            shell_mesh.position.x = tank_body.position.x + Math.cos(faceto * Math.PI / 180) * 50;
+            shell_mesh.position.z = tank_body.position.z + Math.sin(faceto * Math.PI / 180) * 50;
+            scene.add(shell_mesh);
+
+            shells.push({
+                mesh: shell_mesh,
+                heading: faceto,
+                velocity: 2
+            });
+        }
+
+        function create_enermy() {
+            var dir,dis,x,z;
+            do {
+                dir = Math.random() * 360, dis = Math.random() * 200 + initDis;
+                x = tank_body.position.x + Math.cos(dir * Math.PI / 180) * dis, z = tank_body.position.z + Math.sin(dir * Math.PI / 180) * dis;
+            } while (x > 500 || x < -500 || z > 500 || z < -500);
+            var enermy_mesh = new THREE.Mesh(enermy_geometry, enermy_material);
+            enermy_mesh.position.y = 10;
+            enermy_mesh.position.x = x
+            enermy_mesh.position.z = z;
+
+            scene.add(enermy_mesh);
+
+            enermys.push({
+                mesh: enermy_mesh,
+                alive: true //useless
+            });
+        }
+        function animate() {
+            requestAnimationFrame(animate);
+            update();
+            heading %= 360;
+            barrelHeading %= 360;
+
+            shells.forEach(function (s) {
+                if (s.mesh.position.y > 0)
+                    s.mesh.position.y += s.velocity;
+                else
+                    scene.remove(s.mesh);
+                s.mesh.position.x += Math.cos(s.heading * Math.PI / 180) * 10;
+                s.mesh.position.z += Math.sin(s.heading * Math.PI / 180) * 10;
+                s.velocity -= 0.3;
+            })
+
+
+            if (start) {
+                enermys.forEach(function (e) {
+                    if (e.alive) {
+                        tank_body.getWorldPosition(targetPosition);
+                        var x = e.mesh.position.x - tank_body.position.x;
+                        var z = e.mesh.position.z - tank_body.position.z;
+                        var h = Math.atan(x / z);
+                        e.mesh.position.x -= x / Math.sqrt(x * x + z * z) * Speed;
+                        e.mesh.position.z -= z / Math.sqrt(x * x + z * z) * Speed;
+                        e.mesh.rotation.y = h + 0.5 * Math.PI;
+
+                        var d = x * x + z * z;
+                        shells.forEach(function (s) {
+                            var hx = e.mesh.position.x - s.mesh.position.x,
+                                hy = e.mesh.position.y - s.mesh.position.y,
+                                hz = e.mesh.position.z - s.mesh.position.z;
+                            var hitDis = hx * hx + hy * hy + hz * hz;
+                            if (hitDis <= 500) {
+                                scene.remove(s.mesh);
+                                scene.remove(e.mesh);
+                                hitCount++;
+                                params.Score = hitCount;
+                                e.alive = false;
+                            }
+                        })
+                        if (d < 3600)
+                            start = false;
+                    }
+                })
+                var deltaTime = Date.now() - lastTime;
+                if (deltaTime > spawnSpeed) {
+                    create_enermy();
+                    lastTime = Date.now();
+                }
+
+                params.Time = (Date.now() - lastTime2) / 1000;
+            }
+
+            params.BarrelHeading = barrelHeading;
+            params.Heading = heading;
+
+            if (params.FollowMe == false) {
+                camera.position.x = 0;
+                camera.position.y = 500;
+                camera.position.z = 400;
+                camera.lookAt(0, 0, 0);
+
+            }
+            else {
+                tank_body.getWorldPosition(targetPosition);
+                camera.position.x = targetPosition.x;
+                camera.position.y = 500 + targetPosition.y;
+                camera.position.z = 400 + targetPosition.z;
+                camera.lookAt(targetPosition);
+            }
+
+            if (params.Hard == true) {
+                spawnSpeed = 750;
+                Speed = 3;
+                initDis = 150;
+            }
+            else {
+                spawnSpeed = 1500;
+                Speed = 1;
+                initDis = 300;
+            }
+            renderer.render(scene, camera)
+            controls.update();
+        }
+    </script>
+</body>
+</html>
